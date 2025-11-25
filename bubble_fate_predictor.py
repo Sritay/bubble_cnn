@@ -18,8 +18,11 @@ VOXEL_GRID_SIZE = 32
 VOXEL_CUBE_HALF_SIDE = 15.0           
 BATCH_SIZE = 32
 NUM_EPOCHS = 20
+
+# UPDATED: Only 3 Classes now
 NUM_CLASSES = 3
 CLASS_NAMES = ["Stable/Spherical", "Coalescence Imminent", "Dissolution/Collapse"]
+
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 MODEL_PATH = "bubble_fate_predictor_model.pth" 
 
@@ -42,6 +45,8 @@ def load_model(model, path, device):
         print(f"No existing model found at {path}. Model will be trained from scratch.")
         return False
         
+# --- Data Processing Functions ---
+
 def find_bubble_center(frame_coords, gas_indices, box_dims):
     if gas_indices.size == 0:
         return box_dims / 2.0
@@ -224,10 +229,17 @@ def load_mock_trajectories(num_frames=100):
     print("\n--- Running Fallback Mock Data Generation ---")
     X, y = [], []
     DEFAULT_BOX_DIMS = np.array([275.0, 275.0, 275.0]) 
-    for i in tqdm(range(num_frames)):
-        coords = np.random.rand(1000, 3) * DEFAULT_BOX_DIMS
-        gas_indices = np.arange(50)
-        coords[gas_indices] = (DEFAULT_BOX_DIMS / 2.0) + np.random.randn(50, 3) * 2.0
+
+    for i in tqdm(range(num_frames), desc="Processing Mock Frames"):
+        num_atoms = 1000
+        gas_count = 50
+        coords = np.random.rand(num_atoms, 3) * DEFAULT_BOX_DIMS
+        gas_indices = np.arange(gas_count)
+        
+        mock_center = DEFAULT_BOX_DIMS / 2.0
+        coords[gas_indices] = mock_center + np.random.randn(gas_count, 3) * 2.0 
+        
+        # Generate random labels for 3 classes (0, 1, 2)
         current_class = random.randint(0, NUM_CLASSES - 1)
         center = find_bubble_center(coords, gas_indices, DEFAULT_BOX_DIMS)
         voxel_grid = voxelize_bubble(coords, center, DEFAULT_BOX_DIMS)
@@ -297,6 +309,15 @@ def run_predictor():
     FRAMES_A = [0, 10, 50, 100]
     #    Example: Analyze frames 5, 15, 25 from Traj B
     FRAMES_B = [5, 15, 25]
+    # 2. Manually create the labels (NumPy arrays) for each corresponding file.
+    #    0=Stable/Spherical
+    #    1=Coalescence Imminent
+    #    2=Dissolution/Collapse
+
+    # *** REPLACE THESE WITH ACTUAL DATA ***
+    LABELS_A = np.array([0] * 50 + [1] * 50) 
+    LABELS_B = np.array([2] * 20 + [0] * 80) 
+    LABELS_C = np.array([1] * 100)
     
     TARGET_FRAMES_LIST = [FRAMES_A, FRAMES_B]
     # OR use: TARGET_FRAMES_LIST = None (to process sequentially from start)
@@ -314,42 +335,59 @@ def run_predictor():
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     split_gen = torch.Generator().manual_seed(42)
 
+    # --- Data Loading and Splitting ---
+    X, y = load_and_process_trajectories(DUMP_FILES, Y_LABELS_LIST, GAS_ATOM_TYPE)
+
+    if len(X) < 10:
+        print("\nAborting model run because not enough data was loaded (min 10 frames).")
+        return
+
+    full_dataset = BubbleDataset(X, y)
+
+    # Standardized data split
+    train_size = int(0.8 * len(full_dataset))
+    test_size = len(full_dataset) - train_size
+    generator = torch.Generator().manual_seed(42)
+    train_val_dataset, test_dataset = random_split(full_dataset, [train_size, test_size], generator=generator)
+
+    val_size = int(0.1 * len(train_val_dataset))
+    train_size = len(train_val_dataset) - val_size
+    train_dataset, val_dataset = random_split(train_val_dataset, [train_size, val_size], generator=generator)
+
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
+    # --- Model Training or Loading ---
+    model = ConvNet3D(NUM_CLASSES).to(DEVICE)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
     model_loaded = load_model(model, MODEL_PATH, DEVICE)
 
     if not model_loaded:
-        X, y = load_and_process_trajectories(DUMP_FILES, Y_LABELS_LIST, TARGET_FRAMES_LIST, GAS_ATOM_TYPE)
-        if len(X) < 5: return # Reduced min requirement for testing
+        print(f"Training Samples: {len(train_dataset)}")
+        print(f"Validation Samples: {len(val_dataset)}")
+        print(f"Test Samples: {len(test_dataset)}")
+        print(f"Using device: {DEVICE}")
+        print(model) 
         
-        full_dataset = BubbleDataset(X, y)
-        train_size = int(0.8 * len(full_dataset))
-        test_size = len(full_dataset) - train_size
-        train_val, test_data = random_split(full_dataset, [train_size, test_size], generator=split_gen)
-        train_data, val_data = random_split(train_val, [len(train_val)-int(0.1*len(train_val)), int(0.1*len(train_val))], generator=split_gen)
-        
-        train_l = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
-        val_l = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False)
-        test_l = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False)
-        
-        train_model(model, train_l, val_l, criterion, optimizer, NUM_EPOCHS)
+        train_model(model, train_loader, val_loader, criterion, optimizer, NUM_EPOCHS)
         save_model(model, MODEL_PATH)
-        final_l = test_l
-    else:
-        # For testing loaded model, process same data again
-        X, y = load_and_process_trajectories(DUMP_FILES, Y_LABELS_LIST, TARGET_FRAMES_LIST, GAS_ATOM_TYPE)
-        full_dataset = BubbleDataset(X, y)
-        train_size = int(0.8 * len(full_dataset))
-        test_size = len(full_dataset) - train_size
-        _, test_data = random_split(full_dataset, [train_size, test_size], generator=split_gen)
-        final_l = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False)
 
-    preds, true_labels = evaluate_model(model, final_l, criterion)
+    # --- Evaluation ---
+    predictions, true_labels = evaluate_model(model, test_loader, criterion)
     
-    print("\n--- Sample Predictions ---")
+    print("\n--- Sample Prediction Demonstration ---")
+    
     if len(true_labels) > 0:
-        indices = random.sample(range(len(true_labels)), min(3, len(true_labels)))
-        for i in indices:
-            print(f"True: {CLASS_NAMES[true_labels[i]]} | Pred: {CLASS_NAMES[preds[i]]}")
+        sample_indices = random.sample(range(len(true_labels)), min(5, len(true_labels)))
 
+        for i in sample_indices:
+            print(f"Test Sample: {i}")
+            print(f"  True Fate: {CLASS_NAMES[true_labels[i]]}")
+            print(f"  Predicted Fate: {CLASS_NAMES[predictions[i]]}")
+        
 if __name__ == '__main__':
     # Set random seeds for reproducibility
     seed = 42
@@ -358,4 +396,5 @@ if __name__ == '__main__':
     random.seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
     run_predictor()
