@@ -18,8 +18,11 @@ VOXEL_GRID_SIZE = 32
 VOXEL_CUBE_HALF_SIDE = 15.0           
 BATCH_SIZE = 32
 NUM_EPOCHS = 20
-NUM_CLASSES = 4
-CLASS_NAMES = ["Stable/Spherical", "Coalescence Imminent", "Dissolution/Collapse", "Stabilized Peanut"]
+
+# UPDATED: Only 3 Classes now
+NUM_CLASSES = 3
+CLASS_NAMES = ["Stable/Spherical", "Coalescence Imminent", "Dissolution/Collapse"]
+
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 MODEL_PATH = "bubble_fate_predictor_model.pth" 
 
@@ -42,7 +45,7 @@ def load_model(model, path, device):
         print(f"No existing model found at {path}. Model will be trained from scratch.")
         return False
         
-# --- Data Processing Functions (Unchanged) ---
+# --- Data Processing Functions ---
 
 def find_bubble_center(frame_coords, gas_indices, box_dims):
     if gas_indices.size == 0:
@@ -201,6 +204,7 @@ def load_mock_trajectories(num_frames=1000):
         mock_center = DEFAULT_BOX_DIMS / 2.0
         coords[gas_indices] = mock_center + np.random.randn(gas_count, 3) * 2.0 
         
+        # Generate random labels for 3 classes (0, 1, 2)
         current_class = random.randint(0, NUM_CLASSES - 1)
         
         center = find_bubble_center(coords, gas_indices, DEFAULT_BOX_DIMS)
@@ -285,10 +289,14 @@ def run_predictor():
     GAS_ATOM_TYPE = 1 
     
     # 2. Manually create the labels (NumPy arrays) for each corresponding file.
-    #    0=Stable, 1=Coalescing, 2=Dissolving, 3=Peanut
+    #    0=Stable/Spherical
+    #    1=Coalescence Imminent
+    #    2=Dissolution/Collapse
+
+    # *** REPLACE THESE WITH ACTUAL DATA ***
     LABELS_A = np.array([0] * 50 + [1] * 50) 
     LABELS_B = np.array([2] * 20 + [0] * 80) 
-    LABELS_C = np.array([3] * 100)           
+    LABELS_C = np.array([1] * 100)
     
     Y_LABELS_LIST = [LABELS_A, LABELS_B, LABELS_C]
     # ----------------------------------------
@@ -342,12 +350,13 @@ def run_predictor():
     
     print("\n--- Sample Prediction Demonstration ---")
     
-    sample_indices = random.sample(range(len(true_labels)), min(5, len(true_labels)))
-    
-    for i in sample_indices:
-        print(f"Test Sample: {i}")
-        print(f"  True Fate: {CLASS_NAMES[true_labels[i]]}")
-        print(f"  Predicted Fate: {CLASS_NAMES[predictions[i]]}")
+    if len(true_labels) > 0:
+        sample_indices = random.sample(range(len(true_labels)), min(5, len(true_labels)))
+
+        for i in sample_indices:
+            print(f"Test Sample: {i}")
+            print(f"  True Fate: {CLASS_NAMES[true_labels[i]]}")
+            print(f"  Predicted Fate: {CLASS_NAMES[predictions[i]]}")
         
 if __name__ == '__main__':
     seed = 42
