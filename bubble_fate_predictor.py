@@ -18,8 +18,11 @@ VOXEL_GRID_SIZE = 32
 VOXEL_CUBE_HALF_SIDE = 15.0           
 BATCH_SIZE = 32
 NUM_EPOCHS = 20
-NUM_CLASSES = 4
-CLASS_NAMES = ["Stable/Spherical", "Coalescence Imminent", "Dissolution/Collapse", "Stabilized Peanut"]
+
+# UPDATED: Only 3 Classes now
+NUM_CLASSES = 3
+CLASS_NAMES = ["Stable/Spherical", "Coalescence Imminent", "Dissolution/Collapse"]
+
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 MODEL_PATH = "bubble_fate_predictor_model.pth" 
 
@@ -42,7 +45,7 @@ def load_model(model, path, device):
         print(f"No existing model found at {path}. Model will be trained from scratch.")
         return False
         
-# --- Data Processing Functions (Unchanged) ---
+# --- Data Processing Functions ---
 
 def find_bubble_center(frame_coords, gas_indices, box_dims):
     if gas_indices.size == 0:
@@ -201,6 +204,7 @@ def load_mock_trajectories(num_frames=1000):
         mock_center = DEFAULT_BOX_DIMS / 2.0
         coords[gas_indices] = mock_center + np.random.randn(gas_count, 3) * 2.0 
         
+        # Generate random labels for 3 classes (0, 1, 2)
         current_class = random.randint(0, NUM_CLASSES - 1)
         
         center = find_bubble_center(coords, gas_indices, DEFAULT_BOX_DIMS)
@@ -285,10 +289,14 @@ def run_predictor():
     GAS_ATOM_TYPE = 1 
     
     # 2. Manually create the labels (NumPy arrays) for each corresponding file.
-    #    0=Stable, 1=Coalescing, 2=Dissolving, 3=Peanut
+    #    0=Stable/Spherical
+    #    1=Coalescence Imminent
+    #    2=Dissolution/Collapse
+
+    # *** REPLACE THESE WITH ACTUAL DATA ***
     LABELS_A = np.array([0] * 50 + [1] * 50) 
     LABELS_B = np.array([2] * 20 + [0] * 80) 
-    LABELS_C = np.array([3] * 100)           
+    LABELS_C = np.array([1] * 100)
     
     Y_LABELS_LIST = [LABELS_A, LABELS_B, LABELS_C]
     # ----------------------------------------
@@ -297,74 +305,58 @@ def run_predictor():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    # Attempt to load an existing model
+    # --- Data Loading and Splitting ---
+    X, y = load_and_process_trajectories(DUMP_FILES, Y_LABELS_LIST, GAS_ATOM_TYPE)
+
+    if len(X) < 10:
+        print("\nAborting model run because not enough data was loaded (min 10 frames).")
+        return
+
+    full_dataset = BubbleDataset(X, y)
+
+    # Standardized data split
+    train_size = int(0.8 * len(full_dataset))
+    test_size = len(full_dataset) - train_size
+    generator = torch.Generator().manual_seed(42)
+    train_val_dataset, test_dataset = random_split(full_dataset, [train_size, test_size], generator=generator)
+
+    val_size = int(0.1 * len(train_val_dataset))
+    train_size = len(train_val_dataset) - val_size
+    train_dataset, val_dataset = random_split(train_val_dataset, [train_size, val_size], generator=generator)
+
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
+    # --- Model Training or Loading ---
+    model = ConvNet3D(NUM_CLASSES).to(DEVICE)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
     model_loaded = load_model(model, MODEL_PATH, DEVICE)
 
     if not model_loaded:
-        # Load and process data only if we need to train
-        X, y = load_and_process_trajectories(DUMP_FILES, Y_LABELS_LIST, GAS_ATOM_TYPE)
-        
-        if len(X) < 10:
-            print("\nAborting model run because not enough data was loaded (min 10 frames).")
-            return
-            
-        full_dataset = BubbleDataset(X, y)
-        
-        # Split data for training/validation/testing
-        train_size = int(0.8 * len(full_dataset))
-        test_size = len(full_dataset) - train_size
-        train_val_dataset, test_dataset = random_split(full_dataset, [train_size, test_size])
-        
-        val_size = int(0.1 * len(train_val_dataset))
-        train_size = len(train_val_dataset) - val_size
-        train_dataset, val_dataset = random_split(train_val_dataset, [train_size, val_size])
-        
-        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
-        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-        
         print(f"Training Samples: {len(train_dataset)}")
         print(f"Validation Samples: {len(val_dataset)}")
         print(f"Test Samples: {len(test_dataset)}")
         print(f"Using device: {DEVICE}")
-        
         print(model) 
         
-        # Train the model
         train_model(model, train_loader, val_loader, criterion, optimizer, NUM_EPOCHS)
-        
-        # Save the trained model
         save_model(model, MODEL_PATH)
 
-        # Get the test set data loader
-        final_loader = test_loader
-        
-    else:
-        # If model is loaded, we only need to load the test data for evaluation.
-        
-        # For demonstration, we still load the same data to evaluate the loaded model
-        X, y = load_and_process_trajectories(DUMP_FILES, Y_LABELS_LIST, GAS_ATOM_TYPE)
-        full_dataset = BubbleDataset(X, y)
-        
-        # We need to re-split the data using the SAME seed or just use the full data for evaluation
-        # For simplicity in this demo, we'll just use a test split of the full data.
-        train_size = int(0.8 * len(full_dataset))
-        test_size = len(full_dataset) - train_size
-        _, test_dataset = random_split(full_dataset, [train_size, test_size])
-        final_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
-    
-    # Evaluate the loaded or newly trained model
-    predictions, true_labels = evaluate_model(model, final_loader, criterion)
+    # --- Evaluation ---
+    predictions, true_labels = evaluate_model(model, test_loader, criterion)
     
     print("\n--- Sample Prediction Demonstration ---")
     
-    sample_indices = random.sample(range(len(true_labels)), min(5, len(true_labels)))
-    
-    for i in sample_indices:
-        print(f"Test Sample: {i}")
-        print(f"  True Fate: {CLASS_NAMES[true_labels[i]]}")
-        print(f"  Predicted Fate: {CLASS_NAMES[predictions[i]]}")
+    if len(true_labels) > 0:
+        sample_indices = random.sample(range(len(true_labels)), min(5, len(true_labels)))
+
+        for i in sample_indices:
+            print(f"Test Sample: {i}")
+            print(f"  True Fate: {CLASS_NAMES[true_labels[i]]}")
+            print(f"  Predicted Fate: {CLASS_NAMES[predictions[i]]}")
         
 if __name__ == '__main__':
     seed = 42
