@@ -297,65 +297,48 @@ def run_predictor():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    # Attempt to load an existing model
+    # --- Data Loading and Splitting ---
+    X, y = load_and_process_trajectories(DUMP_FILES, Y_LABELS_LIST, GAS_ATOM_TYPE)
+
+    if len(X) < 10:
+        print("\nAborting model run because not enough data was loaded (min 10 frames).")
+        return
+
+    full_dataset = BubbleDataset(X, y)
+
+    # Standardized data split
+    train_size = int(0.8 * len(full_dataset))
+    test_size = len(full_dataset) - train_size
+    generator = torch.Generator().manual_seed(42)
+    train_val_dataset, test_dataset = random_split(full_dataset, [train_size, test_size], generator=generator)
+
+    val_size = int(0.1 * len(train_val_dataset))
+    train_size = len(train_val_dataset) - val_size
+    train_dataset, val_dataset = random_split(train_val_dataset, [train_size, val_size], generator=generator)
+
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
+    # --- Model Training or Loading ---
+    model = ConvNet3D(NUM_CLASSES).to(DEVICE)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
     model_loaded = load_model(model, MODEL_PATH, DEVICE)
 
     if not model_loaded:
-        # Load and process data only if we need to train
-        X, y = load_and_process_trajectories(DUMP_FILES, Y_LABELS_LIST, GAS_ATOM_TYPE)
-        
-        if len(X) < 10:
-            print("\nAborting model run because not enough data was loaded (min 10 frames).")
-            return
-            
-        full_dataset = BubbleDataset(X, y)
-        
-        # Split data for training/validation/testing
-        train_size = int(0.8 * len(full_dataset))
-        test_size = len(full_dataset) - train_size
-        train_val_dataset, test_dataset = random_split(full_dataset, [train_size, test_size])
-        
-        val_size = int(0.1 * len(train_val_dataset))
-        train_size = len(train_val_dataset) - val_size
-        train_dataset, val_dataset = random_split(train_val_dataset, [train_size, val_size])
-        
-        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
-        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-        
         print(f"Training Samples: {len(train_dataset)}")
         print(f"Validation Samples: {len(val_dataset)}")
         print(f"Test Samples: {len(test_dataset)}")
         print(f"Using device: {DEVICE}")
-        
         print(model) 
         
-        # Train the model
         train_model(model, train_loader, val_loader, criterion, optimizer, NUM_EPOCHS)
-        
-        # Save the trained model
         save_model(model, MODEL_PATH)
 
-        # Get the test set data loader
-        final_loader = test_loader
-        
-    else:
-        # If model is loaded, we only need to load the test data for evaluation.
-        
-        # For demonstration, we still load the same data to evaluate the loaded model
-        X, y = load_and_process_trajectories(DUMP_FILES, Y_LABELS_LIST, GAS_ATOM_TYPE)
-        full_dataset = BubbleDataset(X, y)
-        
-        # We need to re-split the data using the SAME seed or just use the full data for evaluation
-        # For simplicity in this demo, we'll just use a test split of the full data.
-        train_size = int(0.8 * len(full_dataset))
-        test_size = len(full_dataset) - train_size
-        _, test_dataset = random_split(full_dataset, [train_size, test_size])
-        final_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
-    
-    # Evaluate the loaded or newly trained model
-    predictions, true_labels = evaluate_model(model, final_loader, criterion)
+    # --- Evaluation ---
+    predictions, true_labels = evaluate_model(model, test_loader, criterion)
     
     print("\n--- Sample Prediction Demonstration ---")
     
