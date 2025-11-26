@@ -38,7 +38,7 @@ singularity pull bubble_cnn.sif docker://sritay/bubble-cnn:latest
     ```bash
     python bubble_fate_predictor.py
     ```
-    or if using the container image,
+    or if using the container image:
     ```bash
     singularity exec bubble_cnn.sif python3 bubble_fate_predictor.py
     ```
