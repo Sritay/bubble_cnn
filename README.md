@@ -17,6 +17,25 @@ This project implements a **3D Spatio-Temporal Convolutional Neural Network (CNN
 * PyTorch (CPU or CUDA)
 * MDAnalysis, NumPy, Tqdm
 
+## Quick Start (HPC / Docker)
+
+You do not need to build the environment from scratch. A pre-built container image with all dependencies (PyTorch CPU, MDAnalysis, NumPy) is available on Docker Hub.
+
+**Docker Hub Repository:** [sritay/bubble-cnn](https://hub.docker.com/repository/docker/sritay/bubble-cnn)
+
+### Setting up on ARCHER2 (or any Singularity system)
+
+Run this single command to pull the image and convert it to a Singularity file:
+
+```bash
+singularity pull bubble_cnn.sif docker://sritay/bubble-cnn:latest
+```
+You can then run the scripts directly using this image:
+
+```bash
+singularity exec bubble_cnn.sif python3 bubble_fate_predictor.py
+```
+
 ### Running Training
 
 1.  Configure the `DUMP_FILES` and `Y_LABELS_LIST` in `bubble_fate_predictor.py`.
