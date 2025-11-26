@@ -30,11 +30,6 @@ Run this single command to pull the image and convert it to a Singularity file:
 ```bash
 singularity pull bubble_cnn.sif docker://sritay/bubble-cnn:latest
 ```
-You can then run the scripts directly using this image:
-
-```bash
-singularity exec bubble_cnn.sif python3 bubble_fate_predictor.py
-```
 
 ### Running Training
 
@@ -42,6 +37,10 @@ singularity exec bubble_cnn.sif python3 bubble_fate_predictor.py
 2.  Run:
     ```bash
     python bubble_fate_predictor.py
+    ```
+    or if using the container image,
+    ```bash
+    singularity exec bubble_cnn.sif python3 bubble_fate_predictor.py
     ```
     *This will train the model, save the weights to `bubble_fate_predictor_model.pth`, and output evaluation metrics.*
 
