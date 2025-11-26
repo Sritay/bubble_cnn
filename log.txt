@@ -1,0 +1,50 @@
+Job started at Tue 25 Nov 2025 10:55:38 PM GMT
+Running in: /mnt/lustre/.../sritay/bubble_cnn
+Using container: /mnt/lustre/.../sritay/bubble_cnn/bubble_cnn.sif
+No existing model found at bubble_fate_predictor_model.pth. Model will be trained from scratch.
+
+--- Loading and Processing 5 Trajectories with Time Window T=5 ---
+
+Processing File: dump_stable.lammpstrj
+
+Processing File: dump_coalesce_1.lammpstrj
+
+Processing File: dump_coalesce_2.lammpstrj
+
+Processing File: dump_coalesce_3.lammpstrj
+
+Processing File: dump_collapse.lammpstrj
+
+--- Data Loading Complete ---
+Total Samples: 294
+
+--- Starting Model Training ---
+Epoch 1: Train Acc: 85.4% | Val Acc: 100.0%
+Epoch 2: Train Acc: 98.6% | Val Acc: 100.0%
+Epoch 3: Train Acc: 97.6% | Val Acc: 91.3%
+Epoch 4: Train Acc: 99.5% | Val Acc: 100.0%
+Epoch 5: Train Acc: 98.1% | Val Acc: 95.7%
+Epoch 6: Train Acc: 99.5% | Val Acc: 100.0%
+Epoch 7: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 8: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 9: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 10: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 11: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 12: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 13: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 14: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 15: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 16: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 17: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 18: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 19: Train Acc: 100.0% | Val Acc: 100.0%
+Epoch 20: Train Acc: 100.0% | Val Acc: 100.0%
+Saving model to bubble_fate_predictor_model.pth...
+Model saved successfully.
+Test Accuracy: 100.00%
+
+--- Sample Predictions ---
+True: Stable/Spherical | Pred: Stable/Spherical
+True: Dissolution/Collapse | Pred: Dissolution/Collapse
+True: Dissolution/Collapse | Pred: Dissolution/Collapse
+Job finished at Tue 25 Nov 2025 11:43:40 PM GMT
